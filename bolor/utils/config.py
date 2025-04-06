@@ -5,44 +5,15 @@ This module provides a central configuration system for the Bolor tool,
 allowing different components to share settings and parameters.
 """
 
-def get_default_config_path() -> Path:
-    """Return the default configuration file path."""
-    return Path.home() / ".bolor" / "config" / "config.json"
-
-def load_config(config_path=None) -> Config:
-    """
-    Load a configuration from file or create a default one.
-    
-    Args:
-        config_path: Optional path to the configuration file.
-                    If None, uses the default path.
-    
-    Returns:
-        Config object with loaded or default configuration.
-    """
-    if config_path is None:
-        config_path = get_default_config_path()
-    
-    try:
-        return Config(config_path)
-    except (FileNotFoundError, json.JSONDecodeError):
-        # Create a new config with defaults
-        config = Config()
-        
-        # Make sure the directory exists
-        config_dir = Path(config_path).parent
-        config_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Save the default config
-        config.config_path = config_path
-        config.save_to_file()
-        
-        return config
-
 import os
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+
+
+def get_default_config_path() -> Path:
+    """Return the default configuration file path."""
+    return Path.home() / ".bolor" / "config" / "config.json"
 
 
 class Config:
@@ -376,3 +347,34 @@ class Config:
         """Get a string representation of the configuration."""
         nested = self._unflatten_dict(self.values)
         return json.dumps(nested, indent=2)
+
+
+def load_config(config_path=None) -> Config:
+    """
+    Load a configuration from file or create a default one.
+    
+    Args:
+        config_path: Optional path to the configuration file.
+                    If None, uses the default path.
+    
+    Returns:
+        Config object with loaded or default configuration.
+    """
+    if config_path is None:
+        config_path = get_default_config_path()
+    
+    try:
+        return Config(config_path)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Create a new config with defaults
+        config = Config()
+        
+        # Make sure the directory exists
+        config_dir = Path(config_path).parent
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save the default config
+        config.config_path = config_path
+        config.save_to_file()
+        
+        return config

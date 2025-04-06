@@ -24,6 +24,8 @@ from bolor_core.gguf_downloader import ensure_models
 from bolor_core.code_checker import analyze_file_and_suggest_fixes, explain_file, optimize_file
 from bolor_core.git_utils import apply_patch
 from bolor_core.llm_runner import get_default_llm, LocalLLM
+from bolor_core.symbol_map import build_symbol_map, build_symbol_map_recursive, find_symbol_references
+from bolor_core.validator import validate_file, parse_traceback, fix_code_with_error
 
 # Initialize custom Typer app and console
 class BolarCliContext(typer.Context):
@@ -376,6 +378,300 @@ def scan(
         console.print(f"[yellow]Found {issues_found} issues in {len(files)} files.")
     else:
         console.print(f"[green]✅ No issues found in {len(files)} files.")
+
+@app.command()
+def symbols(
+    path: str,
+    recursive: bool = typer.Option(
+        False, "--recursive", "-r", help="Process directories recursively"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file to save symbol map (JSON format)"
+    )
+):
+    """Display a map of symbols (classes, functions, variables) in Python code."""
+    target_path = Path(path)
+    if not target_path.exists():
+        console.print(f"[red]❌ Path not found: {path}")
+        raise typer.Exit()
+    
+    import json
+    
+    # Process differently based on file or directory
+    if target_path.is_file():
+        if not target_path.name.endswith('.py'):
+            console.print(f"[yellow]⚠️ Not a Python file: {path}")
+            raise typer.Exit()
+        
+        # Treat the file as a single-file directory
+        file_dir = target_path.parent
+        symbol_map = build_symbol_map(file_dir)
+        # Filter to just the target file
+        symbol_map = {k: v for k, v in symbol_map.items() 
+                     if Path(file_dir / k).samefile(target_path)}
+    else:
+        # Process directory
+        if recursive:
+            console.print(f"[cyan]🔍 Building recursive symbol map for: {path}...")
+            symbol_map = build_symbol_map_recursive(target_path)
+        else:
+            console.print(f"[cyan]🔍 Building symbol map for: {path}...")
+            symbol_map = build_symbol_map(target_path)
+    
+    # Display the symbol map
+    if not symbol_map:
+        console.print("[yellow]⚠️ No symbols found.")
+        return
+    
+    console.print("[bold green]📊 Symbol Map:[/bold green]")
+    for file_path, symbols in symbol_map.items():
+        console.print(f"[bold blue]File: {file_path}[/bold blue]")
+        
+        if not symbols:
+            console.print("  [yellow]No symbols found in this file[/yellow]")
+            continue
+        
+        for symbol in symbols:
+            symbol_type = symbol['type']
+            name = symbol['name']
+            line = symbol['line']
+            
+            if symbol_type == 'class':
+                console.print(f"  [green]Class[/green] [bold]{name}[/bold] (Line {line})")
+                
+                # Show methods
+                for method in symbol.get('methods', []):
+                    method_name = method['name']
+                    method_line = method['line']
+                    console.print(f"    [cyan]Method[/cyan] {method_name} (Line {method_line})")
+                    
+            elif symbol_type == 'function':
+                console.print(f"  [magenta]Function[/magenta] [bold]{name}[/bold] (Line {line})")
+                
+                # Show arguments
+                args = symbol.get('args', [])
+                if args:
+                    arg_str = ", ".join([f"{a['name']}: {a['annotation'] or 'Any'}" for a in args])
+                    console.print(f"    [dim]Args: {arg_str}[/dim]")
+                
+            elif symbol_type == 'variable':
+                value = symbol.get('value', '?')
+                console.print(f"  [yellow]Variable[/yellow] {name} = {value} (Line {line})")
+    
+    # Save to file if requested
+    if output:
+        output_path = Path(output)
+        with open(output_path, 'w') as f:
+            json.dump(symbol_map, f, indent=2)
+        console.print(f"[green]✅ Symbol map saved to {output}")
+
+@app.command()
+def validate(
+    file: str,
+    fix: bool = typer.Option(
+        False, "--fix", "-f", help="Attempt to fix any runtime errors"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file to save fixed code (optional)"
+    )
+):
+    """Validate Python code by running it and checking for runtime errors."""
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[red]❌ File not found: {file}")
+        raise typer.Exit()
+    
+    console.print(f"[bold cyan]🧪 Validating {file}...")
+    success, error_message = validate_file(file_path)
+    
+    if success:
+        console.print("[green]✅ Code runs without errors.")
+        return
+    
+    console.print("[red]❌ Runtime error detected:")
+    console.print(error_message)
+    
+    if not fix:
+        console.print("[yellow]Use --fix to attempt automatic error correction.")
+        return
+    
+    # Try to fix the error
+    console.print("[bold cyan]🔧 Attempting to fix the error...")
+    
+    # Parse the error message
+    error_info = parse_traceback(error_message)
+    
+    # Display error details
+    console.print(f"[yellow]Error type: {error_info['error_type']}")
+    console.print(f"[yellow]Error message: {error_info['error_message']}")
+    console.print(f"[yellow]Line: {error_info['line']}")
+    
+    # Read the original code
+    with open(file_path, 'r') as f:
+        code = f.read()
+    
+    # Apply fix
+    fixed_code = fix_code_with_error(code, error_info)
+    
+    # Check if the code was actually modified
+    if fixed_code == code:
+        console.print("[yellow]⚠️ Could not automatically fix this error.")
+        return
+    
+    # Save the fixed code
+    if output:
+        output_path = Path(output)
+        with open(output_path, 'w') as f:
+            f.write(fixed_code)
+        console.print(f"[green]✅ Fixed code saved to {output}")
+    else:
+        # Backup the original
+        backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+        with open(backup_path, 'w') as f:
+            f.write(code)
+        
+        # Write the fixed code to the original file
+        with open(file_path, 'w') as f:
+            f.write(fixed_code)
+        
+        console.print(f"[green]✅ Applied fixes to {file}. Original backed up to {backup_path.name}")
+        
+        # Validate the fixed code
+        success, error_message = validate_file(file_path)
+        if success:
+            console.print("[green]✅ Fixed code runs without errors.")
+        else:
+            console.print("[yellow]⚠️ Fixed code still has errors:")
+            console.print(error_message)
+
+@app.command()
+def fix(
+    file: str,
+    issue: Optional[str] = typer.Option(
+        None, "--issue", "-i", help="Specific issue to fix, e.g., 'missing docstrings'"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file to save fixed code (optional)"
+    )
+):
+    """Fix code issues using the LLM."""
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[red]❌ File not found: {file}")
+        raise typer.Exit()
+    
+    # Get the file content
+    with open(file_path, 'r') as f:
+        code = f.read()
+    
+    # First, check for syntax errors
+    import ast
+    try:
+        ast.parse(code)
+    except SyntaxError as e:
+        console.print(f"[red]❌ Syntax error: {str(e)}")
+        
+        # Try to fix syntax error with LLM
+        console.print("[bold cyan]🔧 Attempting to fix syntax error...")
+        llm = get_default_llm()
+        
+        prompt = f"""
+        Fix the following Python code that has a syntax error:
+        
+        ```python
+        {code}
+        ```
+        
+        Error: {str(e)}
+        
+        Return ONLY the fixed code, no explanations.
+        """
+        
+        fixed_code = llm.ask(prompt, temperature=0.1, max_tokens=len(code) + 100)
+        
+        if output:
+            output_path = Path(output)
+            with open(output_path, 'w') as f:
+                f.write(fixed_code)
+            console.print(f"[green]✅ Fixed code saved to {output}")
+        else:
+            # Backup the original
+            backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+            with open(backup_path, 'w') as f:
+                f.write(code)
+            
+            # Write the fixed code to the original file
+            with open(file_path, 'w') as f:
+                f.write(fixed_code)
+            
+            console.print(f"[green]✅ Applied fixes to {file}. Original backed up to {backup_path.name}")
+        
+        return
+    
+    # Check for runtime errors if no syntax errors
+    success, error_message = validate_file(file_path)
+    
+    if not success:
+        # Has runtime errors, use validate --fix instead
+        console.print("[yellow]⚠️ Runtime errors detected. Use 'bolor validate --fix' instead.")
+        console.print(error_message)
+        return
+    
+    # No errors, check for specific issues
+    if issue:
+        console.print(f"[bold cyan]🔍 Looking for {issue} issues...")
+        llm = get_default_llm()
+        
+        prompt = f"""
+        Fix the following Python code, focusing specifically on {issue}:
+        
+        ```python
+        {code}
+        ```
+        
+        Return ONLY the fixed code, no explanations.
+        """
+        
+        fixed_code = llm.ask(prompt, temperature=0.2, max_tokens=len(code) + 100)
+    else:
+        # Use code_checker for general issues
+        console.print("[bold cyan]🔍 Checking for code issues...")
+        suggestions = analyze_file_and_suggest_fixes(file_path)
+        
+        if not suggestions:
+            console.print("[green]✅ No issues found.")
+            return
+        
+        for idx, (line, message, fix) in enumerate(suggestions, 1):
+            console.print(f"[yellow]⚠️ Issue {idx} at line {line}:")
+            console.print(f"  {message}")
+            console.print(f"  Suggested fix: {fix}\n")
+        
+        if Prompt.ask("Apply suggested fixes?", choices=["y", "n"], default="n") == "y":
+            apply_patch(file_path, suggestions)
+            console.print("[green]✅ Fixes applied.")
+            return
+        else:
+            console.print("[blue]ℹ️ Skipping fix application.")
+            return
+    
+    # Save the fixed code
+    if output:
+        output_path = Path(output)
+        with open(output_path, 'w') as f:
+            f.write(fixed_code)
+        console.print(f"[green]✅ Fixed code saved to {output}")
+    else:
+        # Backup the original
+        backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+        with open(backup_path, 'w') as f:
+            f.write(code)
+        
+        # Write the fixed code to the original file
+        with open(file_path, 'w') as f:
+            f.write(fixed_code)
+        
+        console.print(f"[green]✅ Applied fixes to {file}. Original backed up to {backup_path.name}")
 
 @app.command()
 def config(

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="bolor",
-    version="0.2.5",  # Version bump for CLI fix
+    version="0.2.7",  # Version bump for config.py import fix
     description="Local LLM-based code repair tool with self-healing capabilities",
     author="Bolorerdene Bundgaa",
     author_email="hi@photoxpedia.studio",
