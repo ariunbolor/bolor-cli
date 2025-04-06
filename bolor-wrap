@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""
+Direct wrapper for Bolor CLI that ensures command name is displayed correctly.
+"""
+
+import sys
+import re
+import subprocess
+import os
+
+def main():
+    # Default to python3
+    python_exe = os.environ.get('PYTHON', 'python3')
+    
+    # Run the python module with all arguments
+    cmd = [python_exe, '-m', 'bolor.cli'] + sys.argv[1:]
+    
+    try:
+        # Capture the output
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Fix the command name in stdout
+        stdout = result.stdout
+        stderr = result.stderr
+        
+        # Patterns to replace
+        patterns = [
+            (r'python -m bolor\.bolor\.bolor', 'bolor'),
+            (r'python -m bolor\.bolor', 'bolor'),
+            (r'python -m bolor', 'bolor'),
+            (r'python3 -m bolor\.bolor', 'bolor'),
+            (r'python3 -m bolor', 'bolor'),
+            (r'Usage: python', 'Usage: bolor'),
+        ]
+        
+        # Apply all replacements
+        for pattern, replacement in patterns:
+            stdout = re.sub(pattern, replacement, stdout)
+            stderr = re.sub(pattern, replacement, stderr)
+        
+        # Print the fixed output
+        if stdout:
+            print(stdout, end='')
+        if stderr:
+            print(stderr, file=sys.stderr, end='')
+        
+        return result.returncode
+    except FileNotFoundError:
+        print(f"Error: Could not execute '{python_exe}'", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

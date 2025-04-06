@@ -1,0 +1,29 @@
+# Include additional files in the PyPI package
+include README.md
+include LICENSE
+include CHANGELOG.md
+include requirements.txt
+include fix-bolor-cli.sh
+include fix-bolor-standalone.sh
+include bolor-cli
+include bolor-cli.sh
+include bolor-wrap
+include bolor-generate
+include test_installation.sh
+include build_and_upload.sh
+include setup-bolor-cli.sh
+include deploy-bolor-cli.sh
+include deploy-to-pypi.sh
+
+# Include examples
+recursive-include examples *
+
+# Include tests
+recursive-include tests *
+
+# Exclude cache files
+global-exclude __pycache__/*
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude .git*

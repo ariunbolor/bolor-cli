@@ -1,0 +1,8 @@
+#!/bin/bash
+# Simple wrapper script for Bolor
+
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Execute the Python wrapper with all arguments
+exec "${SCRIPT_DIR}/bolor-wrap" "$@"

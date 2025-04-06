@@ -1,0 +1,53 @@
+"""
+This is an example Python file with various issues for Bolor to detect and fix.
+"""
+
+# Function missing a docstring
+def calculate_factorial(n):
+    if n <= 1:
+        return 1
+    else:
+        return n * calculate_factorial(n - 1)
+
+# Inefficient list generation
+def generate_squares(max_number):
+    squares = []
+    for i in range(max_number):
+        squares.append(i * i)
+    return squares
+
+# Function with potentially undefined variable
+def process_data(data):
+    # This comment should explain what _temp_value is, but it doesn't
+    if data:
+        result = data[0]
+        for item in data[1:]:
+            result += _temp_value  # Potential bug: using undefined variable
+    else:
+        result = None
+    return result
+
+# Complex expression that could be simplified
+def calculate_expression(a, b, c):
+    result = (a * b) + (a * c) + (b * c) + (a * b * c)
+    return result
+
+# Main function without proper error handling
+def main():
+    numbers = [1, 2, 3, 4, 5]
+    factorial_results = [calculate_factorial(n) for n in numbers]
+    squares = generate_squares(10)
+    
+    print("Factorial results:", factorial_results)
+    print("Squares:", squares)
+    
+    # Potential error if this dict doesn't have 'key1'
+    sample_dict = {'key1': 'value1'}
+    print(sample_dict['key1'])
+    
+    # This could raise an exception if numbers is empty
+    average = sum(numbers) / len(numbers)
+    print(f"Average: {average}")
+
+if __name__ == "__main__":
+    main()

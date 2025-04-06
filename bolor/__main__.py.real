@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+"""
+Main entry point for Bolor CLI.
+This is a copy of the real implementation to preserve it during our fix.
+"""
+
+# Importing this file directly imports the entire __main__.py contents
+from bolor.__main__ import *
